@@ -1,6 +1,7 @@
 // backend/server.js
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -11,6 +12,18 @@ const PORT = 3000;
 // --- Middleware ---
 app.use(cors());
 app.use(express.json());
+
+// --- Load Texts from JSON file ---
+let typingTexts = {};
+try {
+    const textsPath = path.join(__dirname, 'texts.json');
+    const textsData = fs.readFileSync(textsPath, 'utf8');
+    typingTexts = JSON.parse(textsData);
+    console.log('Successfully loaded typing texts from texts.json');
+} catch (error) {
+    console.error('Could not load texts.json. Make sure the file exists and is valid JSON.', error);
+}
+
 
 // --- In-Memory Storage (Replace with a database for production) ---
 let leaderboard = [
@@ -23,15 +36,31 @@ let leaderboard = [
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
+// *** ROBUST GEMINI FETCH FUNCTION ***
 async function fetchTextFromGemini(prompt) {
     try {
         const result = await model.generateContent(prompt);
         const response = await result.response;
+
+        // Check if the prompt or response was blocked for safety reasons
+        if (response.promptFeedback && response.promptFeedback.blockReason) {
+            console.warn(`Prompt was blocked by Gemini API. Reason: ${response.promptFeedback.blockReason}`);
+            return null; // Return null to indicate failure
+        }
+
+        // Check if the API returned any text candidates
+        if (!response.candidates || response.candidates.length === 0 || !response.candidates[0].content) {
+            console.warn('Gemini API returned no candidates. Finish reason:', response.candidates?.[0]?.finishReason);
+            return null; // Return null to indicate failure
+        }
+        
+        // If everything is okay, return the text
         return response.text().trim();
+
     } catch (error) {
-        console.error("Error fetching from Gemini API:", error);
-        // Return a reliable fallback text if the API fails
-        return "The quick brown fox jumps over the lazy dog. The world is full of amazing adventures waiting to be discovered. Please try again in a moment as we are experiencing technical difficulties with our text generation service.";
+        // Catch network errors or other issues during the API call
+        console.error("Error during Gemini API call:", error);
+        return null;
     }
 }
 
@@ -39,33 +68,37 @@ async function fetchTextFromGemini(prompt) {
 
 /**
  * POST /api/generate-text
- * Generates text for typing tests using the Gemini API.
+ * Generates text for typing tests using the Gemini API, with a robust JSON fallback.
  */
 app.post('/api/generate-text', async (req, res) => {
     try {
         const { mode, timeLimit } = req.body;
 
-        let wordCount;
-        if (timeLimit === 1) wordCount = 90;
-        else if (timeLimit === 2) wordCount = 180;
-        else if (timeLimit === 5) wordCount = 300;
-        else wordCount = 100; // Default
+        const prompt = `Generate a paragraph for a typing speed test. It should be appropriate for a ${timeLimit}-minute test. The text should be engaging, grammatically correct, and contain no special characters or quotes.`;
 
-        const prompt = `Generate a paragraph of about ${wordCount} words in plain English for a typing speed test.
-        The text should have a mix of common and slightly advanced vocabulary, be grammatically correct, engaging, and coherent.
-        Do not include numbers, special characters (like *, #, @), or quotation marks.
-        Return only the text itself without any additional formatting, titles, or quotes.`;
+        let text = await fetchTextFromGemini(prompt);
 
-        const text = await fetchTextFromGemini(prompt);
-
+        // *** MODIFIED LOGIC: USE JSON FALLBACK IF GEMINI FAILS ***
         if (!text || text.trim().length === 0) {
-            throw new Error('Empty response from Gemini API');
+            console.log('Gemini failed to generate valid text, using fallback from texts.json.');
+            
+            const timeKey = String(timeLimit);
+            const fallbackOptions = typingTexts[timeKey];
+
+            if (fallbackOptions && fallbackOptions.length > 0) {
+                // Select a random text from the appropriate category
+                const randomIndex = Math.floor(Math.random() * fallbackOptions.length);
+                text = fallbackOptions[randomIndex];
+            } else {
+                // Final fallback if the time limit isn't in the JSON file
+                text = "The quick brown fox jumps over the lazy dog. This is a default text because no specific fallback was found for the selected time limit.";
+            }
         }
 
         res.json({ text: text.trim() });
 
     } catch (error) {
-        console.error('Error generating text:', error);
+        console.error('Error in /api/generate-text endpoint:', error);
         res.status(500).json({ error: 'Failed to generate text' });
     }
 });
