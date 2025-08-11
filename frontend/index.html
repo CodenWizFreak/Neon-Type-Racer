@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Type-Racer</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Main project fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Font for the certificate -->
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- This canvas is used for generating the certificate off-screen -->
+    <canvas id="certificateCanvas" class="hidden"></canvas>
+
+    <div class="stars"></div>
+    <div class="container">
+        <!-- Landing Screen -->
+        <div id="landing-screen" class="screen active">
+            <div class="neon-title">
+                <h1 class="main-title">NEON</h1>
+                <h2 class="sub-title">TYPE-RACER</h2>
+                <div class="title-underline"></div>
+            </div>
+            <p class="landing-description">
+                Experience the future of typing with our <span class="highlight">cyberpunk-inspired</span> interface.
+                Challenge yourself, earn certificates, and compete in daily contests.
+            </p>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <div class="feature-text">Fast Typing</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <div class="feature-text">Accuracy</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🏆</div>
+                    <div class="feature-text">Compete</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⌨️</div>
+                    <div class="feature-text">Practice</div>
+                </div>
+            </div>
+            <button id="get-started-btn" class="btn btn-primary pulse">INITIALIZE SYSTEM</button>
+            <div class="loading-dots">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+        </div>
+
+        <!-- Login Screen -->
+        <div id="login-screen" class="screen">
+            <div class="login-header">
+                <h1 class="screen-title">System <span class="accent">Access</span></h1>
+                <p class="screen-subtitle">Initialize your typing session</p>
+            </div>
+            <div class="login-form">
+                <div class="input-group">
+                    <div class="input-icon">👤</div>
+                    <input type="text" id="name-input" class="neon-input" placeholder="Enter your name" autocomplete="off">
+                </div>
+                <button id="google-signin-btn" class="btn btn-disabled" disabled>
+                    <div class="btn-icon">🔒</div>
+                    Sign in with Google (Coming Soon)
+                </button>
+                <button id="proceed-button" class="btn btn-primary" disabled>ENTER THE MATRIX</button>
+            </div>
+            <div class="matrix-rain">
+                <div class="rain-line"></div>
+                <div class="rain-line"></div>
+                <div class="rain-line"></div>
+                <div class="rain-line"></div>
+                <div class="rain-line"></div>
+            </div>
+        </div>
+
+        <!-- Mode Selection Screen -->
+        <div id="mode-selection-screen" class="screen">
+            <div class="mode-header">
+                <h1 class="screen-title">Welcome, <span id="user-name" class="accent"></span></h1>
+                <p class="screen-subtitle">Choose your challenge and begin typing</p>
+            </div>
+            
+            <div id="mode-cards" class="mode-grid">
+                <div class="mode-card" data-mode="practice">
+                    <div class="mode-icon green">▶️</div>
+                    <h3 class="mode-title">Practice Mode</h3>
+                    <p class="mode-description">Hone your skills with endless text</p>
+                    <div class="mode-glow green"></div>
+                </div>
+                <div class="mode-card" data-mode="test">
+                    <div class="mode-icon cyan">🏅</div>
+                    <h3 class="mode-title">Typing Test</h3>
+                    <p class="mode-description">Get certified for your performance</p>
+                    <div class="mode-glow cyan"></div>
+                </div>
+                <div class="mode-card" data-mode="contest">
+                    <div class="mode-icon yellow">🏆</div>
+                    <h3 class="mode-title">Daily Contest</h3>
+                    <p class="mode-description">1-minute challenge • Leaderboard glory</p>
+                    <div class="mode-glow yellow"></div>
+                </div>
+            </div>
+
+            <div id="time-selector" class="time-selector hidden">
+                <h3 class="time-title">Select Duration</h3>
+                <p class="time-subtitle">Choose how long you want to type</p>
+                <div class="time-buttons">
+                    <button class="time-btn" data-time="1">
+                        <div class="time-icon">⏱️</div>
+                        <span>1 min</span>
+                    </button>
+                    <button class="time-btn" data-time="2">
+                        <div class="time-icon">⏱️</div>
+                        <span>2 min</span>
+                    </button>
+                    <button class="time-btn" data-time="5">
+                        <div class="time-icon">⏱️</div>
+                        <span>5 min</span>
+                    </button>
+                </div>
+                <button id="back-to-modes" class="btn btn-secondary">← Back to Modes</button>
+            </div>
+
+            <div class="logout-section">
+                <button id="logout-button" class="btn btn-logout">
+                    <span>🚪</span> Disconnect
+                </button>
+            </div>
+        </div>
+
+        <!-- Typing Screen -->
+        <div id="typing-screen" class="screen">
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-icon">⏰</div>
+                    <div id="timer" class="stat-value">00:00</div>
+                    <div class="stat-label">Time</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⚡</div>
+                    <div id="wpm-live" class="stat-value green">0</div>
+                    <div class="stat-label">WPM</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div id="accuracy-live" class="stat-value yellow">100%</div>
+                    <div class="stat-label">Accuracy</div>
+                </div>
+            </div>
+
+            <div id="text-display" class="text-display">
+                <p class="loader">Loading text...</p>
+            </div>
+
+            <input type="text" id="hidden-input" class="hidden-input" autofocus>
+            
+            <p class="typing-tip">Click above and start typing to begin the test</p>
+            <div class="typing-indicators">
+                <div class="indicator"></div>
+                <div class="indicator"></div>
+                <div class="indicator"></div>
+            </div>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="results-screen" class="screen">
+            <div class="results-header">
+                <h1 class="screen-title">Test <span class="accent">Complete!</span></h1>
+                <div id="performance-badge" class="performance-badge">
+                    <span id="performance-level">Elite Typist</span>
+                </div>
+            </div>
+
+            <div class="results-grid">
+                <div class="result-card green">
+                    <div class="result-icon">🏆</div>
+                    <div id="results-wpm" class="result-value">0</div>
+                    <div class="result-label">Words Per Minute</div>
+                </div>
+                <div class="result-card cyan">
+                    <div class="result-icon">🎯</div>
+                    <div id="results-accuracy" class="result-value">0%</div>
+                    <div class="result-label">Accuracy</div>
+                </div>
+                <div class="result-card red">
+                    <div class="result-icon">❌</div>
+                    <div id="results-errors" class="result-value">0</div>
+                    <div class="result-label">Errors</div>
+                </div>
+            </div>
+
+            <!-- Certificate Section -->
+            <div id="certificate-section" class="certificate-section hidden">
+                <h3 class="section-title">Your <span class="accent">Certificate</span></h3>
+                <div class="certificate-card">
+                    <div class="certificate-icon">🏅</div>
+                    <p class="certificate-text">
+                        This certifies that <span id="cert-name" class="accent"></span>
+                    </p>
+                    <p class="certificate-stats">
+                        has achieved a typing speed of <span id="cert-wpm" class="highlight">0 WPM</span> with
+                        <span id="cert-accuracy" class="highlight">0% accuracy</span>
+                    </p>
+                    <p class="certificate-date">Neon Type-Racer • <span id="cert-date"></span></p>
+                </div>
+                <button id="download-cert-btn" class="btn btn-primary">
+                    <span>📥</span> Download Certificate
+                </button>
+            </div>
+
+            <!-- Leaderboard Section -->
+            <div id="leaderboard-section" class="leaderboard-section hidden">
+                <h3 class="section-title">Daily <span class="accent">Leaderboard</span></h3>
+                <div class="leaderboard-table">
+                    <div class="leaderboard-header">
+                        <div>Rank</div>
+                        <div>Name</div>
+                        <div>WPM</div>
+                        <div>Accuracy</div>
+                    </div>
+                    <div id="leaderboard-body" class="leaderboard-body">
+                        <!-- Leaderboard entries will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <button id="try-again-btn" class="btn btn-secondary">
+                <span>🔄</span> Try Again
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
