@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const mongoose = require('mongoose');
 require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
@@ -13,6 +14,29 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
+// --- Database Connection ---
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('Successfully connected to MongoDB'))
+    .catch(err => console.error('MongoDB connection error:', err));
+
+// --- Mongoose Schemas and Models ---
+const scoreSchema = new mongoose.Schema({
+    name: { type: String, required: true, trim: true },
+    wpm: { type: Number, required: true },
+    accuracy: { type: Number, required: true },
+    mode: { type: String, required: true },
+    timeLimit: { type: Number, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
+scoreSchema.index({ createdAt: 1 });
+const Score = mongoose.model('Score', scoreSchema);
+
+const dailyContestSchema = new mongoose.Schema({
+    text: { type: String, required: true },
+    date: { type: String, required: true, unique: true, index: true }
+});
+const DailyContest = mongoose.model('DailyContest', dailyContestSchema);
+
 // --- Load Texts from JSON file ---
 let typingTexts = {};
 try {
@@ -21,44 +45,22 @@ try {
     typingTexts = JSON.parse(textsData);
     console.log('Successfully loaded typing texts from texts.json');
 } catch (error) {
-    console.error('Could not load texts.json. Make sure the file exists and is valid JSON.', error);
+    console.error('Could not load texts.json.', error);
 }
 
-
-// --- In-Memory Storage (Replace with a database for production) ---
-let leaderboard = [
-    { name: 'Alice', wpm: 95, accuracy: 98, mode: 'contest', timestamp: new Date().toISOString() },
-    { name: 'Bob', wpm: 88, accuracy: 96, mode: 'contest', timestamp: new Date().toISOString() }
-];
-
 // --- Gemini API Setup ---
-// Make sure you have a .env file with your GEMINI_API_KEY
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
-// *** ROBUST GEMINI FETCH FUNCTION ***
 async function fetchTextFromGemini(prompt) {
     try {
         const result = await model.generateContent(prompt);
         const response = await result.response;
-
-        // Check if the prompt or response was blocked for safety reasons
-        if (response.promptFeedback && response.promptFeedback.blockReason) {
-            console.warn(`Prompt was blocked by Gemini API. Reason: ${response.promptFeedback.blockReason}`);
-            return null; // Return null to indicate failure
-        }
-
-        // Check if the API returned any text candidates
         if (!response.candidates || response.candidates.length === 0 || !response.candidates[0].content) {
-            console.warn('Gemini API returned no candidates. Finish reason:', response.candidates?.[0]?.finishReason);
-            return null; // Return null to indicate failure
+            return null;
         }
-        
-        // If everything is okay, return the text
         return response.text().trim();
-
     } catch (error) {
-        // Catch network errors or other issues during the API call
         console.error("Error during Gemini API call:", error);
         return null;
     }
@@ -67,70 +69,104 @@ async function fetchTextFromGemini(prompt) {
 // --- API Endpoints ---
 
 /**
- * POST /api/generate-text
- * Generates text for typing tests using the Gemini API, with a robust JSON fallback.
+ * POST /api/generate-text (for Practice and Test modes)
  */
 app.post('/api/generate-text', async (req, res) => {
     try {
-        const { mode, timeLimit } = req.body;
+        const { timeLimit } = req.body;
 
-        const prompt = `Generate a paragraph for a typing speed test. It should be appropriate for a ${timeLimit}-minute test. The text should be engaging, grammatically correct, and contain no special characters or quotes.`;
+        const topics = [
+            "the history of video games", "the science of sleep", "the process of making chocolate",
+            "the architecture of skyscrapers", "the basics of quantum physics", "a journey through the Amazon rainforest",
+            "the life of a honeybee", "the art of storytelling", "the impact of social media",
+            "the exploration of Mars", "the creation of a coral reef"
+        ];
+        const randomTopic = topics[Math.floor(Math.random() * topics.length)];
 
+        const wordCountMap = { "1": 100, "2": 200, "5": 450 };
+        const wordCount = wordCountMap[String(timeLimit)] || 100;
+
+        const prompt = `Generate a paragraph of about ${wordCount} words for a typing test. The topic is ${randomTopic}. The text should be engaging, grammatically correct, and contain no special characters or quotes.`;
+        
+        console.log(`Generated prompt for practice/test: "${prompt}"`);
         let text = await fetchTextFromGemini(prompt);
 
-        // *** MODIFIED LOGIC: USE JSON FALLBACK IF GEMINI FAILS ***
         if (!text || text.trim().length === 0) {
-            console.log('Gemini failed to generate valid text, using fallback from texts.json.');
-            
-            const timeKey = String(timeLimit);
-            const fallbackOptions = typingTexts[timeKey];
-
+            console.log('Gemini failed, using fallback from texts.json.');
+            const fallbackOptions = typingTexts[String(timeLimit)];
             if (fallbackOptions && fallbackOptions.length > 0) {
-                // Select a random text from the appropriate category
-                const randomIndex = Math.floor(Math.random() * fallbackOptions.length);
-                text = fallbackOptions[randomIndex];
+                text = fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
             } else {
-                // Final fallback if the time limit isn't in the JSON file
-                text = "The quick brown fox jumps over the lazy dog. This is a default text because no specific fallback was found for the selected time limit.";
+                text = "The quick brown fox jumps over the lazy dog.";
             }
         }
-
         res.json({ text: text.trim() });
-
     } catch (error) {
-        console.error('Error in /api/generate-text endpoint:', error);
         res.status(500).json({ error: 'Failed to generate text' });
     }
 });
 
 /**
- * POST /api/submit-score
- * Receives a score from the frontend and adds it to the in-memory leaderboard.
+ * GET /api/daily-contest/status
  */
-app.post('/api/submit-score', (req, res) => {
+app.get('/api/daily-contest/status', async (req, res) => {
     try {
-        const { name, wpm, accuracy, mode, timeLimit, timestamp } = req.body;
+        const { name } = req.query;
+        if (!name) return res.status(400).json({ error: 'User name is required.' });
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+        const existingScore = await Score.findOne({
+            name: name,
+            mode: 'contest',
+            createdAt: { $gte: startOfDay, $lte: endOfDay }
+        });
+        res.json({ hasPlayed: !!existingScore });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to check contest status.' });
+    }
+});
 
+/**
+ * GET /api/daily-contest/text
+ */
+app.get('/api/daily-contest/text', async (req, res) => {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const contest = await DailyContest.findOne({ date: today });
+        if (contest) {
+            return res.json({ text: contest.text });
+        } else {
+            return res.status(404).json({ error: "Today's contest is not yet available." });
+        }
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch daily contest text.' });
+    }
+});
+
+/**
+ * POST /api/submit-score
+ */
+app.post('/api/submit-score', async (req, res) => {
+    try {
+        const { name, wpm, accuracy, mode, timeLimit } = req.body;
+        
+        // Validate required fields
         if (!name || wpm === undefined || accuracy === undefined) {
-            return res.status(400).json({ error: 'Invalid score data. Name, WPM, and accuracy are required.' });
+            return res.status(400).json({ error: 'Invalid score data.' });
+        }
+
+        // Check mode BEFORE saving to database
+        if (mode !== 'contest') {
+            return res.status(200).json({ message: 'Practice/Test score received but not saved.' });
         }
         
-        const scoreEntry = {
-            name: name.trim(),
-            wpm: parseInt(wpm),
-            accuracy: parseFloat(accuracy),
-            mode: mode || 'unknown',
-            timeLimit: timeLimit || 0,
-            timestamp: timestamp || new Date().toISOString()
-        };
+        // Only save contest mode scores
+        const newScore = new Score({ name, wpm, accuracy, mode, timeLimit });
+        await newScore.save();
         
-        leaderboard.push(scoreEntry);
-        
-        res.status(201).json({ 
-            message: 'Score submitted successfully!',
-            entry: scoreEntry
-        });
-        
+        res.status(201).json({ message: 'Contest score submitted successfully!', entry: newScore });
     } catch (error) {
         console.error('Error submitting score:', error);
         res.status(500).json({ error: 'Failed to submit score' });
@@ -139,34 +175,45 @@ app.post('/api/submit-score', (req, res) => {
 
 /**
  * GET /api/leaderboard
- * Returns the sorted leaderboard.
  */
-app.get('/api/leaderboard', (req, res) => {
+app.get('/api/leaderboard', async (req, res) => {
     try {
-        const { mode, limit = 10 } = req.query;
-        
-        let filteredLeaderboard = [...leaderboard];
-        
-        if (mode && mode !== 'all') {
-            filteredLeaderboard = filteredLeaderboard.filter(entry => entry.mode === mode);
+        const { name: currentUserName } = req.query;
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+        const top10 = await Score.find({
+            createdAt: { $gte: startOfDay, $lte: endOfDay },
+            mode: 'contest'
+        }).sort({ wpm: -1, accuracy: -1 }).limit(10);
+        let userRankData = null;
+        if (currentUserName) {
+            const userBestScore = await Score.findOne({
+                name: currentUserName,
+                mode: 'contest',
+                createdAt: { $gte: startOfDay, $lte: endOfDay }
+            }).sort({ wpm: -1, accuracy: -1 });
+            if (userBestScore) {
+                const userInTop10 = top10.some(score => score._id.equals(userBestScore._id));
+                if (!userInTop10) {
+                    const higherScoresCount = await Score.countDocuments({
+                        mode: 'contest',
+                        createdAt: { $gte: startOfDay, $lte: endOfDay },
+                        $or: [
+                            { wpm: { $gt: userBestScore.wpm } },
+                            { wpm: userBestScore.wpm, accuracy: { $gt: userBestScore.accuracy } }
+                        ]
+                    });
+                    userRankData = { rank: higherScoresCount + 1, ...userBestScore.toObject() };
+                }
+            }
         }
-        
-        // Sort by WPM (desc), then by accuracy (desc)
-        const sortedLeaderboard = filteredLeaderboard.sort((a, b) => {
-            if (b.wpm !== a.wpm) return b.wpm - a.wpm;
-            return b.accuracy - a.accuracy;
-        });
-        
-        const limitedLeaderboard = sortedLeaderboard.slice(0, parseInt(limit));
-        
-        res.json({ leaderboard: limitedLeaderboard });
-        
+        res.json({ top10, userRank: userRankData });
     } catch (error) {
-        console.error('Error fetching leaderboard:', error);
         res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 });
-
 
 // --- Server Start ---
 app.listen(PORT, () => {
