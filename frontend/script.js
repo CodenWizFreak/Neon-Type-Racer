@@ -1,7 +1,6 @@
 // Neon Type-Racer JavaScript
 document.addEventListener('DOMContentLoaded', () => {
     // --- Configuration ---
-    // Make sure your backend is running on this port
     const BASE_URL = 'http://localhost:3000'; 
 
     // State Management
@@ -24,30 +23,20 @@ document.addEventListener('DOMContentLoaded', () => {
         typing: document.getElementById('typing-screen'),
         results: document.getElementById('results-screen')
     };
-
-    // Landing Screen Elements
     const getStartedBtn = document.getElementById('get-started-btn');
-
-    // Login Screen Elements
     const nameInput = document.getElementById('name-input');
     const proceedButton = document.getElementById('proceed-button');
-
-    // Mode Selection Elements
     const userNameDisplay = document.getElementById('user-name');
     const modeCards = document.querySelectorAll('.mode-card');
     const timeSelector = document.getElementById('time-selector');
     const timeButtons = document.querySelectorAll('.time-btn');
     const backToModesBtn = document.getElementById('back-to-modes');
     const logoutButton = document.getElementById('logout-button');
-
-    // Typing Screen Elements
     const textDisplay = document.getElementById('text-display');
     const hiddenInput = document.getElementById('hidden-input');
     const timerDisplay = document.getElementById('timer');
     const wpmLiveDisplay = document.getElementById('wpm-live');
     const accuracyLiveDisplay = document.getElementById('accuracy-live');
-
-    // Results Screen Elements
     const performanceBadge = document.getElementById('performance-badge');
     const performanceLevel = document.getElementById('performance-level');
     const resultsWPM = document.getElementById('results-wpm');
@@ -60,9 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Utility Functions ---
     function showScreen(screenName) {
-        Object.values(screens).forEach(screen => {
-            screen.classList.remove('active');
-        });
+        Object.values(screens).forEach(screen => screen.classList.remove('active'));
         screens[screenName].classList.add('active');
     }
 
@@ -79,30 +66,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return { level: 'Beginner', color: 'cyan' };
     }
 
-    // --- Backend Integration ---
-    async function fetchTextFromBackend(minutes, mode) {
-        try {
-            const response = await fetch(`${BASE_URL}/api/generate-text`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ timeLimit: minutes, mode })
-            });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const data = await response.json();
-            return data.text || '';
-        } catch (error) {
-            console.error('Error fetching text from backend:', error);
-            // Fallback text if the API fails
-            return "The quick brown fox jumps over the lazy dog. The world is full of amazing adventures waiting to be discovered. Please try again in a moment as we are experiencing technical difficulties with our text generation service.";
-        }
-    }
-
-    // --- Screen Logic ---
-
-    // Landing Screen
+    // --- Main Application Flow ---
+    
+    // Initialize
+    showScreen('landing');
     getStartedBtn.addEventListener('click', () => showScreen('login'));
 
-    // Login Screen
+    // Login
     nameInput.addEventListener('input', () => {
         const isNameValid = nameInput.value.trim() !== '';
         proceedButton.disabled = !isNameValid;
@@ -125,23 +95,31 @@ document.addEventListener('DOMContentLoaded', () => {
         showScreen('login');
     });
 
+    // --- REFACTORED: Centralized Test Starting Logic ---
+
     // Mode Selection
     modeCards.forEach(card => {
         card.addEventListener('click', () => {
-            currentMode = card.dataset.mode;
-            if (currentMode === 'contest') {
-                startTest(1); // Contest is always 1 minute
+            const mode = card.dataset.mode;
+            currentMode = mode; // Set the current mode IMMEDIATELY
+
+            if (mode === 'contest') {
+                // For contest, the time is always 1 minute
+                startTest(mode, 1);
             } else {
+                // For other modes, show the time selector
                 timeSelector.classList.remove('hidden');
                 document.querySelector('.mode-grid').style.display = 'none';
             }
         });
     });
 
+    // Time Selection for Practice/Test modes
     timeButtons.forEach(button => {
         button.addEventListener('click', () => {
             const minutes = parseInt(button.dataset.time);
-            startTest(minutes);
+            // The `currentMode` was already set when the user clicked "Practice" or "Test"
+            startTest(currentMode, minutes);
         });
     });
 
@@ -151,97 +129,101 @@ document.addEventListener('DOMContentLoaded', () => {
         currentMode = '';
     });
 
-    // --- Typing Test Core Logic ---
+    // --- Typing Test Logic ---
     function resetTestState() {
         clearInterval(timerInterval);
         timerInterval = null;
-        timeLimit = 0;
         timeRemaining = 0;
-        testText = '';
         currentIndex = 0;
         errors = 0;
-        testStartTime = null;
         isTestActive = false;
-        
+        testStartTime = null;
         timerDisplay.textContent = '00:00';
         wpmLiveDisplay.textContent = '0';
         accuracyLiveDisplay.textContent = '100%';
         hiddenInput.value = '';
-        textDisplay.innerHTML = `<p class="loader">Generating text...</p>`;
+        textDisplay.innerHTML = `<p class="loader">Getting ready...</p>`;
     }
 
-    async function startTest(minutes) {
+    // *** MODIFIED for better UI responsiveness ***
+    async function startTest(mode, minutes) {
         resetTestState();
         timeLimit = minutes * 60;
         timeRemaining = timeLimit;
         timerDisplay.textContent = formatTime(timeLimit);
-        showScreen('typing');
         
-        testText = await fetchTextFromBackend(minutes, currentMode);
-        renderText();
-        hiddenInput.focus();
+        // 1. Show the typing screen immediately with a loading message
+        showScreen('typing');
+        textDisplay.innerHTML = `<p class="loader">Generating text...</p>`;
+
+        try {
+            let textToUse;
+
+            if (mode === 'contest') {
+                const statusResponse = await fetch(`${BASE_URL}/api/daily-contest/status?name=${encodeURIComponent(user.name)}`);
+                if (!statusResponse.ok) throw new Error('Could not check contest status.');
+                const { hasPlayed } = await statusResponse.json();
+
+                if (hasPlayed) {
+                    alert("You have already completed today's contest. Check back tomorrow!");
+                    showScreen('modeSelection');
+                    timeSelector.classList.add('hidden');
+                    document.querySelector('.mode-grid').style.display = 'grid';
+                    return;
+                }
+
+                const textResponse = await fetch(`${BASE_URL}/api/daily-contest/text`);
+                if (!textResponse.ok) throw new Error('Could not fetch daily contest text.');
+                const { text } = await textResponse.json();
+                textToUse = text;
+
+            } else {
+                const response = await fetch(`${BASE_URL}/api/generate-text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ timeLimit: minutes, mode })
+                });
+                if (!response.ok) throw new Error('Could not fetch practice text.');
+                const { text } = await response.json();
+                textToUse = text;
+            }
+
+            // 2. Once text is fetched, render it and focus the input
+            testText = textToUse;
+            renderText();
+            hiddenInput.focus();
+
+        } catch (error) {
+            console.error('Error starting test:', error);
+            textDisplay.innerHTML = `<p class="error-message">Could not start the test: ${error.message}</p>`;
+        }
     }
 
-    // *** SIMPLIFIED AND CORRECTED RENDER FUNCTION ***
     function renderText() {
-        if (!testText.trim()) {
+        if (!testText || !testText.trim()) {
             textDisplay.innerHTML = '<p class="error-message">Failed to load text. Please try again.</p>';
             return;
         }
-        
-        // Simply render the text as a flat sequence of characters.
-        // The browser's natural word wrapping will handle the lines correctly.
         textDisplay.innerHTML = testText.split('').map(char => `<span class="char">${char}</span>`).join('');
-        
-        // Set the first character as current
         const firstChar = textDisplay.querySelector('.char');
         if (firstChar) {
             firstChar.classList.add('char-current');
         }
     }
 
-
-    function startTimer() {
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(() => {
-            timeRemaining--;
-            timerDisplay.textContent = formatTime(timeRemaining);
-            updateLiveStats();
-            if (timeRemaining <= 0) {
-                endTest();
-            }
-        }, 1000);
-    }
-
-    function updateLiveStats() {
-        if (!testStartTime || !isTestActive) return;
-        const elapsedTime = (Date.now() - testStartTime) / 1000 / 60; // in minutes
-        if (elapsedTime > 0) {
-            const grossWPM = Math.round((currentIndex / 5) / elapsedTime);
-            wpmLiveDisplay.textContent = grossWPM.toString();
-            const accuracy = currentIndex > 0 ? Math.round(((currentIndex - errors) / currentIndex) * 100) : 100;
-            accuracyLiveDisplay.textContent = `${Math.max(0, accuracy)}%`;
-        }
-    }
-
-    // *** MODIFIED FUNCTION FOR SMARTER AUTO-SCROLLING ***
     function autoScroll() {
         const currentCharacter = textDisplay.querySelector('.char-current');
         if (currentCharacter) {
             const textDisplayRect = textDisplay.getBoundingClientRect();
             const charRect = currentCharacter.getBoundingClientRect();
-
-            // Check if the character's line is in the bottom half of the text box
             if (charRect.top > textDisplayRect.top + textDisplayRect.height / 2) {
-                // 'center' is a good option to keep the active line in the middle
                 currentCharacter.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         }
     }
 
-
     hiddenInput.addEventListener('keydown', (e) => {
-        if (timeRemaining <= 0 || currentIndex >= testText.length) {
+        if (timeRemaining <= 0 || !testText || currentIndex >= testText.length) {
             e.preventDefault();
             return;
         }
@@ -258,17 +240,10 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             if (currentIndex > 0) {
                 currentIndex--;
-                // If the character we are moving back to was marked incorrect, we can optionally adjust the error count
-                if (chars[currentIndex].classList.contains('char-incorrect')) {
-                    // This part can be complex. For now, we'll just reset the class.
-                    // The main goal is visual correction.
-                }
                 chars[currentIndex].className = 'char char-current';
-                if(chars[currentIndex + 1]) {
-                    chars[currentIndex + 1].className = 'char';
-                }
+                if(chars[currentIndex + 1]) chars[currentIndex + 1].className = 'char';
             }
-            autoScroll(); // Scroll on backspace too
+            autoScroll();
             return;
         }
 
@@ -276,9 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         e.preventDefault();
         
-        const expectedChar = testText[currentIndex];
-        
-        if (e.key === expectedChar) {
+        if (e.key === testText[currentIndex]) {
             chars[currentIndex].className = 'char char-correct';
         } else {
             chars[currentIndex].className = 'char char-incorrect';
@@ -293,39 +266,41 @@ document.addEventListener('DOMContentLoaded', () => {
             endTest();
         }
         updateLiveStats();
-        autoScroll(); // Scroll after every key press
+        autoScroll();
     });
 
-    async function submitScore(wpm, accuracy) {
-        try {
-            await fetch(`${BASE_URL}/api/submit-score`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: user.name,
-                    wpm,
-                    accuracy,
-                    mode: currentMode,
-                    timeLimit: timeLimit / 60,
-                    timestamp: new Date().toISOString()
-                })
-            });
-        } catch (error) {
-            console.error('Error submitting score:', error);
+    function startTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            timeRemaining--;
+            timerDisplay.textContent = formatTime(timeRemaining);
+            updateLiveStats();
+            if (timeRemaining <= 0) endTest();
+        }, 1000);
+    }
+
+    function updateLiveStats() {
+        if (!testStartTime) return;
+        const elapsedTime = (Date.now() - testStartTime) / 1000 / 60;
+        if (elapsedTime > 0) {
+            const grossWPM = Math.round((currentIndex / 5) / elapsedTime);
+            wpmLiveDisplay.textContent = grossWPM.toString();
+            const accuracy = currentIndex > 0 ? Math.round(((currentIndex - errors) / currentIndex) * 100) : 100;
+            accuracyLiveDisplay.textContent = `${Math.max(0, accuracy)}%`;
         }
     }
 
-    function endTest() {
+    async function endTest() {
         isTestActive = false;
         clearInterval(timerInterval);
         
-        const timeElapsedInMinutes = (timeLimit - timeRemaining) / 60;
+        const timeElapsedInMinutes = (timeLimit - (timeRemaining > 0 ? timeRemaining : 0)) / 60;
         if (timeElapsedInMinutes === 0) return;
 
         const netWPM = Math.round(((currentIndex - errors) / 5) / timeElapsedInMinutes);
         const accuracy = currentIndex > 0 ? Math.round(((currentIndex - errors) / currentIndex) * 100) : 0;
         
-        submitScore(netWPM, accuracy);
+        await submitScore(netWPM, accuracy);
         
         resultsWPM.textContent = netWPM.toString();
         resultsAccuracy.textContent = `${accuracy}%`;
@@ -340,18 +315,97 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (currentMode === 'test') {
             showCertificateSection(netWPM, accuracy);
+        } else if (currentMode === 'contest') {
+            await showLeaderboardSection();
         }
         
         showScreen('results');
     }
+
+    async function submitScore(wpm, accuracy) {
+        try {
+            await fetch(`${BASE_URL}/api/submit-score`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: user.name,
+                    wpm,
+                    accuracy,
+                    mode: currentMode,
+                    timeLimit: timeLimit / 60
+                })
+            });
+        } catch (error) {
+            console.error('Error submitting score:', error);
+        }
+    }
+
+    // --- Results Screen Logic ---
 
     function showCertificateSection(wpm, accuracy) {
         certificateSection.classList.remove('hidden');
         document.getElementById('cert-name').textContent = user.name;
         document.getElementById('cert-wpm').textContent = `${wpm} WPM`;
         document.getElementById('cert-accuracy').textContent = `${accuracy}% accuracy`;
-        const today = new Date();
-        document.getElementById('cert-date').textContent = today.toLocaleDateString('en-GB');
+        document.getElementById('cert-date').textContent = new Date().toLocaleDateString('en-GB');
+    }
+
+    async function showLeaderboardSection() {
+        leaderboardSection.classList.remove('hidden');
+        const leaderboardBody = document.getElementById('leaderboard-body');
+        leaderboardBody.innerHTML = '<p class="loader">Loading leaderboard...</p>';
+
+        try {
+            const response = await fetch(`${BASE_URL}/api/leaderboard?name=${encodeURIComponent(user.name)}`);
+            if (!response.ok) throw new Error('Failed to fetch leaderboard');
+            
+            const { top10, userRank } = await response.json();
+            displayLeaderboard(top10, userRank);
+
+        } catch (error) {
+            console.error('Error fetching leaderboard:', error);
+            leaderboardBody.innerHTML = '<p class="error-message">Could not load leaderboard.</p>';
+        }
+    }
+
+    function displayLeaderboard(top10, userRank) {
+        const leaderboardBody = document.getElementById('leaderboard-body');
+        leaderboardBody.innerHTML = '';
+
+        top10.forEach((entry, index) => {
+            const row = document.createElement('div');
+            const isCurrentUser = entry.name === user.name;
+            row.className = `leaderboard-row ${isCurrentUser ? 'current-user' : ''}`;
+            
+            const rankClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
+
+            row.innerHTML = `
+                <div class="rank ${rankClass}">${index + 1}</div>
+                <div>${entry.name}</div>
+                <div>${entry.wpm}</div>
+                <div>${entry.accuracy}%</div>
+            `;
+            leaderboardBody.appendChild(row);
+        });
+
+        if (userRank && !top10.some(score => score.name === user.name)) {
+            if (top10.length >= 10) {
+                const separator = document.createElement('div');
+                separator.className = 'leaderboard-separator';
+                separator.textContent = '...';
+                leaderboardBody.appendChild(separator);
+            }
+
+            const userRow = document.createElement('div');
+            userRow.className = 'leaderboard-row current-user';
+            userRow.innerHTML = `
+                <div class="rank">${userRank.rank}</div>
+                <div>${userRank.name}</div>
+                <div>${userRank.wpm}</div>
+                <div>${userRank.accuracy}%</div>
+            `;
+            leaderboardBody.appendChild(userRow);
+        }
     }
 
     downloadCertBtn.addEventListener('click', () => {
@@ -364,41 +418,38 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('certificateCanvas');
         const ctx = canvas.getContext('2d');
         const img = new Image();
-        
         img.src = 'Neon Type Racer Certificate.png'; 
         img.crossOrigin = "Anonymous";
-
         img.onload = () => {
             canvas.width = img.width;
             canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
-
             ctx.textAlign = "center";
             ctx.fillStyle = "#000000";
-
+            
+            // Name
             ctx.font = "bold 60px 'Russo One'";
             ctx.fillText(name, img.width / 2, 630);
-
+            
+            // WPM and Accuracy
             ctx.font = "bold 100px 'Russo One'";
             ctx.fillText(wpm, img.width * 0.255, img.height * 0.75);
-
-            ctx.font = "bold 100px 'Russo One'";
+            
+            // Use accuracy as-is since it already contains the % symbol
             ctx.fillText(accuracy, img.width * 0.51, img.height * 0.75);
-
-            const today = new Date();
-            const dateString = today.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+            
+            // Date
+            const dateString = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
             ctx.font = "bold 60px 'Russo One'";
             ctx.fillText(dateString, img.width * 0.756, img.height * 0.75);
-
+            
+            // Download
             const link = document.createElement('a');
             link.download = `Typing_Certificate_${name.replace(/\s+/g, '_')}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
         };
-
-        img.onerror = () => {
-            alert("Could not load the certificate image. Make sure 'Neon Type Racer Certificate.png' is in the frontend folder and you are running the project from a local server.");
-        }
+        img.onerror = () => alert("Could not load certificate image. Ensure it's in the frontend folder and you're using a local server.");
     }
 
     tryAgainBtn.addEventListener('click', () => {
@@ -410,12 +461,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     textDisplay.addEventListener('click', () => hiddenInput.focus());
-
     hiddenInput.addEventListener('blur', () => {
         if (screens.typing.classList.contains('active')) {
             setTimeout(() => hiddenInput.focus(), 0);
         }
     });
-
-    showScreen('landing');
 });
