@@ -35,13 +35,22 @@ A web-based Typing Speed Test application with Practice, Typing Test, and Contes
     ```bash
     cd neon-type-racer
     ```
-
-3.  Install backend dependencies and start the server:
-    ```bash
-    cd backend
-    npm install
-    npm start
-    ```
+3. Navigate to backend directory and create a .env file and start daily contest server:
+   ```bash
+   cd backend
+   ```
+   In the .env file, fill the following:
+   ```bash
+   GEMINI_API_KEY = "your_api_key"
+   PORT = 3000
+   NODE_ENV = development
+   MONGODB_URI = "your_mongodb_uri"
+   ```
+   ```bash
+   npm install
+   node generateDailyText.js
+   node server.js
+   ```
 
 4.  Navigate to the frontend directory and serve the application:
     ```bash
