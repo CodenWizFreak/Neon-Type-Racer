@@ -76,10 +76,3 @@ Feel free to fork this repository, raise issues, or submit pull requests to add 
 ## 📜 License
 
 This project is licensed under the [MIT License](LICENSE).
-
-## 🧑‍🤝‍🧑 Contributors
-
--   [CodenWizFreak](https://github.com/CodenWizFreak) (Ananyo Dasgupta)
--   [subhomishachakraborty](https://github.com/subhomishachakraborty) (Subhomisha Chakraborty)
--   [geothermal-1408](https://github.com/geothermal-1408) (Souvik Kisku)
--   [Ninjasri98](https://github.com/Ninjasri98) (Sriparno Palit)
