@@ -1,10 +1,19 @@
 // Neon Type-Racer JavaScript
+
+// Make the Google Sign-In handler globally accessible
+function handleGoogleSignIn(response) {
+    // This function is called by the Google Sign-In library.
+    // It creates a custom event that our main script can listen for.
+    const event = new CustomEvent('google-signin', { detail: response });
+    document.dispatchEvent(event);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- Configuration ---
     const BASE_URL = 'http://localhost:3000'; 
 
     // State Management
-    let user = { name: '' };
+    let user = { name: '', email: '' }; // User object now includes email
     let currentMode = '';
     let timeLimit = 0;
     let timeRemaining = 0;
@@ -14,24 +23,23 @@ document.addEventListener('DOMContentLoaded', () => {
     let errors = 0;
     let testStartTime = null;
     let isTestActive = false;
-
+    
     // DOM Elements
     const screens = {
         landing: document.getElementById('landing-screen'),
         login: document.getElementById('login-screen'),
+        newUser: document.getElementById('new-user-screen'), // New screen for registration
         modeSelection: document.getElementById('mode-selection-screen'),
         typing: document.getElementById('typing-screen'),
         results: document.getElementById('results-screen')
     };
     const getStartedBtn = document.getElementById('get-started-btn');
-    const nameInput = document.getElementById('name-input');
-    const proceedButton = document.getElementById('proceed-button');
     const userNameDisplay = document.getElementById('user-name');
+    const logoutButton = document.getElementById('logout-button');
     const modeCards = document.querySelectorAll('.mode-card');
     const timeSelector = document.getElementById('time-selector');
     const timeButtons = document.querySelectorAll('.time-btn');
     const backToModesBtn = document.getElementById('back-to-modes');
-    const logoutButton = document.getElementById('logout-button');
     const textDisplay = document.getElementById('text-display');
     const hiddenInput = document.getElementById('hidden-input');
     const timerDisplay = document.getElementById('timer');
@@ -46,11 +54,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const leaderboardSection = document.getElementById('leaderboard-section');
     const tryAgainBtn = document.getElementById('try-again-btn');
     const downloadCertBtn = document.getElementById('download-cert-btn');
+    
+    // New User Screen Elements
+    const newUserDisplayName = document.getElementById('new-user-name-display');
+    const newUserNameInput = document.getElementById('new-user-name-input');
+    const yearOfBirthSelect = document.getElementById('year-of-birth-select');
+    const completeRegBtn = document.getElementById('complete-registration-btn');
+
 
     // --- Utility Functions ---
     function showScreen(screenName) {
         Object.values(screens).forEach(screen => screen.classList.remove('active'));
-        screens[screenName].classList.add('active');
+        if (screens[screenName]) {
+            screens[screenName].classList.add('active');
+        }
     }
 
     function formatTime(seconds) {
@@ -65,60 +82,122 @@ document.addEventListener('DOMContentLoaded', () => {
         if (wpm >= 40) return { level: 'Advanced', color: 'cyan' };
         return { level: 'Beginner', color: 'cyan' };
     }
-
-    // --- Main Application Flow ---
     
-    // Initialize
-    showScreen('landing');
-    getStartedBtn.addEventListener('click', () => showScreen('login'));
+    // --- Main Application Flow ---
 
-    // Login
-    nameInput.addEventListener('input', () => {
-        const isNameValid = nameInput.value.trim() !== '';
-        proceedButton.disabled = !isNameValid;
-        proceedButton.classList.toggle('btn-disabled', !isNameValid);
+    function checkForSavedUser() {
+        const savedUser = localStorage.getItem('typingUser');
+        if (savedUser) {
+            user = JSON.parse(savedUser);
+            userNameDisplay.textContent = user.name;
+            showScreen('modeSelection');
+        } else {
+            showScreen('landing');
+        }
+    }
+
+    // Listen for the custom event from the global sign-in handler
+    document.addEventListener('google-signin', async (event) => {
+        const idToken = event.detail.credential;
+        try {
+            const res = await fetch(`${BASE_URL}/api/auth/google/signin`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: idToken })
+            });
+
+            if (!res.ok) throw new Error('Authentication failed.');
+            
+            const data = await res.json();
+            
+            if (data.isNewUser) {
+                // Store temporary user info and show registration screen
+                user = data.user;
+                newUserDisplayName.textContent = user.name;
+                newUserNameInput.value = user.name;
+                showScreen('newUser');
+            } else {
+                // Existing user, log them in
+                user = data.user;
+                localStorage.setItem('typingUser', JSON.stringify(user));
+                userNameDisplay.textContent = user.name;
+                showScreen('modeSelection');
+            }
+        } catch (error) {
+            console.error('Sign-in error:', error);
+            alert('Google Sign-In failed. Please try again.');
+        }
     });
 
-    proceedButton.addEventListener('click', () => {
-        user.name = nameInput.value.trim();
-        userNameDisplay.textContent = user.name;
-        showScreen('modeSelection');
+    function populateYearSelect() {
+        // Generate years from 2022 down to 1940
+        for (let year = 2022; year >= 1940; year--) {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearOfBirthSelect.appendChild(option);
+        }
+    }
+
+    function validateNewUserInfo() {
+        const name = newUserNameInput.value.trim();
+        const year = yearOfBirthSelect.value;
+        completeRegBtn.disabled = !(name && year);
+    }
+
+    newUserNameInput.addEventListener('input', validateNewUserInfo);
+    yearOfBirthSelect.addEventListener('change', validateNewUserInfo);
+
+    completeRegBtn.addEventListener('click', async () => {
+        const name = newUserNameInput.value.trim();
+        const yearOfBirth = yearOfBirthSelect.value;
+
+        try {
+            const res = await fetch(`${BASE_URL}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: user.email, name, yearOfBirth })
+            });
+
+            if (!res.ok) throw new Error('Registration failed.');
+            
+            const data = await res.json();
+            user = data.user;
+            localStorage.setItem('typingUser', JSON.stringify(user));
+            userNameDisplay.textContent = user.name;
+            showScreen('modeSelection');
+
+        } catch (error) {
+            console.error('Registration error:', error);
+            alert('Could not complete registration. Please try again.');
+        }
     });
 
     logoutButton.addEventListener('click', () => {
-        user.name = '';
-        nameInput.value = '';
-        proceedButton.disabled = true;
-        proceedButton.classList.add('btn-disabled');
-        timeSelector.classList.add('hidden');
-        document.querySelector('.mode-grid').style.display = 'grid';
+        user = { name: '', email: '' };
+        localStorage.removeItem('typingUser');
         showScreen('login');
     });
+    
+    getStartedBtn.addEventListener('click', () => showScreen('login'));
 
-    // --- REFACTORED: Centralized Test Starting Logic ---
-
-    // Mode Selection
+    // --- Test Starting Logic ---
     modeCards.forEach(card => {
         card.addEventListener('click', () => {
             const mode = card.dataset.mode;
-            currentMode = mode; // Set the current mode IMMEDIATELY
-
+            currentMode = mode;
             if (mode === 'contest') {
-                // For contest, the time is always 1 minute
                 startTest(mode, 1);
             } else {
-                // For other modes, show the time selector
                 timeSelector.classList.remove('hidden');
                 document.querySelector('.mode-grid').style.display = 'none';
             }
         });
     });
 
-    // Time Selection for Practice/Test modes
     timeButtons.forEach(button => {
         button.addEventListener('click', () => {
             const minutes = parseInt(button.dataset.time);
-            // The `currentMode` was already set when the user clicked "Practice" or "Test"
             startTest(currentMode, minutes);
         });
     });
@@ -128,31 +207,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('.mode-grid').style.display = 'grid';
         currentMode = '';
     });
-
-    // --- Typing Test Logic ---
-    function resetTestState() {
-        clearInterval(timerInterval);
-        timerInterval = null;
-        timeRemaining = 0;
-        currentIndex = 0;
-        errors = 0;
-        isTestActive = false;
-        testStartTime = null;
-        timerDisplay.textContent = '00:00';
-        wpmLiveDisplay.textContent = '0';
-        accuracyLiveDisplay.textContent = '100%';
-        hiddenInput.value = '';
-        textDisplay.innerHTML = `<p class="loader">Getting ready...</p>`;
-    }
-
-    // *** MODIFIED for better UI responsiveness ***
+    
     async function startTest(mode, minutes) {
         resetTestState();
         timeLimit = minutes * 60;
         timeRemaining = timeLimit;
         timerDisplay.textContent = formatTime(timeLimit);
         
-        // 1. Show the typing screen immediately with a loading message
         showScreen('typing');
         textDisplay.innerHTML = `<p class="loader">Generating text...</p>`;
 
@@ -160,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let textToUse;
 
             if (mode === 'contest') {
-                const statusResponse = await fetch(`${BASE_URL}/api/daily-contest/status?name=${encodeURIComponent(user.name)}`);
+                const statusResponse = await fetch(`${BASE_URL}/api/daily-contest/status?email=${encodeURIComponent(user.email)}`);
                 if (!statusResponse.ok) throw new Error('Could not check contest status.');
                 const { hasPlayed } = await statusResponse.json();
 
@@ -188,7 +249,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 textToUse = text;
             }
 
-            // 2. Once text is fetched, render it and focus the input
             testText = textToUse;
             renderText();
             hiddenInput.focus();
@@ -197,6 +257,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error starting test:', error);
             textDisplay.innerHTML = `<p class="error-message">Could not start the test: ${error.message}</p>`;
         }
+    }
+
+    function resetTestState() {
+        currentIndex = 0;
+        errors = 0;
+        testStartTime = null;
+        isTestActive = false;
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        wpmLiveDisplay.textContent = '0';
+        accuracyLiveDisplay.textContent = '100%';
     }
 
     function renderText() {
@@ -321,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         showScreen('results');
     }
-
+    
     async function submitScore(wpm, accuracy) {
         try {
             await fetch(`${BASE_URL}/api/submit-score`, {
@@ -329,6 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: user.name,
+                    email: user.email,
                     wpm,
                     accuracy,
                     mode: currentMode,
@@ -340,23 +414,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Results Screen Logic ---
-
-    function showCertificateSection(wpm, accuracy) {
-        certificateSection.classList.remove('hidden');
-        document.getElementById('cert-name').textContent = user.name;
-        document.getElementById('cert-wpm').textContent = `${wpm} WPM`;
-        document.getElementById('cert-accuracy').textContent = `${accuracy}% accuracy`;
-        document.getElementById('cert-date').textContent = new Date().toLocaleDateString('en-GB');
-    }
-
     async function showLeaderboardSection() {
         leaderboardSection.classList.remove('hidden');
         const leaderboardBody = document.getElementById('leaderboard-body');
         leaderboardBody.innerHTML = '<p class="loader">Loading leaderboard...</p>';
 
         try {
-            const response = await fetch(`${BASE_URL}/api/leaderboard?name=${encodeURIComponent(user.name)}`);
+            const response = await fetch(`${BASE_URL}/api/leaderboard?email=${encodeURIComponent(user.email)}`);
             if (!response.ok) throw new Error('Failed to fetch leaderboard');
             
             const { top10, userRank } = await response.json();
@@ -374,7 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         top10.forEach((entry, index) => {
             const row = document.createElement('div');
-            const isCurrentUser = entry.name === user.name;
+            const isCurrentUser = entry.email === user.email;
             row.className = `leaderboard-row ${isCurrentUser ? 'current-user' : ''}`;
             
             const rankClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
@@ -388,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
             leaderboardBody.appendChild(row);
         });
 
-        if (userRank && !top10.some(score => score.name === user.name)) {
+        if (userRank && !top10.some(score => score.email === user.email)) {
             if (top10.length >= 10) {
                 const separator = document.createElement('div');
                 separator.className = 'leaderboard-separator';
@@ -406,6 +470,14 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             leaderboardBody.appendChild(userRow);
         }
+    }
+
+    function showCertificateSection(wpm, accuracy) {
+        certificateSection.classList.remove('hidden');
+        document.getElementById('cert-name').textContent = user.name;
+        document.getElementById('cert-wpm').textContent = `${wpm} WPM`;
+        document.getElementById('cert-accuracy').textContent = `${accuracy} accuracy`;
+        document.getElementById('cert-date').textContent = new Date().toLocaleDateString('en-GB');
     }
 
     downloadCertBtn.addEventListener('click', () => {
@@ -426,24 +498,14 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.drawImage(img, 0, 0);
             ctx.textAlign = "center";
             ctx.fillStyle = "#000000";
-            
-            // Name
             ctx.font = "bold 60px 'Russo One'";
             ctx.fillText(name, img.width / 2, 630);
-            
-            // WPM and Accuracy
             ctx.font = "bold 100px 'Russo One'";
             ctx.fillText(wpm, img.width * 0.255, img.height * 0.75);
-            
-            // Use accuracy as-is since it already contains the % symbol
-            ctx.fillText(accuracy, img.width * 0.51, img.height * 0.75);
-            
-            // Date
+            ctx.fillText(`${accuracy}`, img.width * 0.51, img.height * 0.75);
             const dateString = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
             ctx.font = "bold 60px 'Russo One'";
             ctx.fillText(dateString, img.width * 0.756, img.height * 0.75);
-            
-            // Download
             const link = document.createElement('a');
             link.download = `Typing_Certificate_${name.replace(/\s+/g, '_')}.png`;
             link.href = canvas.toDataURL('image/png');
@@ -466,4 +528,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => hiddenInput.focus(), 0);
         }
     });
+
+    // Initialize the application
+    populateYearSelect();
+    checkForSavedUser();
 });

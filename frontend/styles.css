@@ -868,6 +868,25 @@ body {
     color: var(--text-muted);
 }
 
+.neon-input option {
+    background-color: #ffffff;
+    color: #000000;
+    padding: 0.5rem;
+}
+
+/* Alternative more comprehensive styling */
+.neon-input select option {
+    background-color: #ffffff;
+    color: #000000;
+    padding: 0.5rem;
+}
+
+/* You can also add hover effects for better UX */
+.neon-input option:hover {
+    background-color: var(--neon-cyan);
+    color: var(--bg-primary);
+}
+
 /* Leaderboard */
 .leaderboard-table {
     background: var(--bg-card);

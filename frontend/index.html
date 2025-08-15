@@ -11,6 +11,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <!-- Font for the certificate -->
     <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
+    
+    <!-- Google Sign-In Script -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
     <!-- This canvas is used for generating the certificate off-screen -->
@@ -48,36 +51,51 @@
                 </div>
             </div>
             <button id="get-started-btn" class="btn btn-primary pulse">INITIALIZE SYSTEM</button>
-            <div class="loading-dots">
-                <div class="dot"></div>
-                <div class="dot"></div>
-                <div class="dot"></div>
-            </div>
         </div>
 
         <!-- Login Screen -->
         <div id="login-screen" class="screen">
             <div class="login-header">
                 <h1 class="screen-title">System <span class="accent">Access</span></h1>
-                <p class="screen-subtitle">Initialize your typing session</p>
+                <p class="screen-subtitle">Authenticate to begin your session</p>
+            </div>
+            <!-- Google Sign-In Button Container -->
+            <div id="google-signin-button-container" style="display: flex; justify-content: center; margin-top: 2rem;">
+                <!-- **** PASTE YOUR CLIENT ID HERE **** -->
+                <div id="g_id_onload"
+                     data-client_id="729601546001-n6oi10ueom6dp6o8nqn0bira5llje56n.apps.googleusercontent.com" 
+                     data-callback="handleGoogleSignIn">
+                </div>
+                <div class="g_id_signin"
+                     data-type="standard"
+                     data-shape="rectangular"
+                     data-theme="outline"
+                     data-text="continue_with"
+                     data-size="large"
+                     data-logo_alignment="left">
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW: New User Registration Screen -->
+        <div id="new-user-screen" class="screen">
+            <div class="login-header">
+                <h1 class="screen-title">Welcome, <span id="new-user-name-display" class="accent"></span>!</h1>
+                <p class="screen-subtitle">Complete your registration to continue</p>
             </div>
             <div class="login-form">
                 <div class="input-group">
                     <div class="input-icon">👤</div>
-                    <input type="text" id="name-input" class="neon-input" placeholder="Enter your name" autocomplete="off">
+                    <input type="text" id="new-user-name-input" class="neon-input" placeholder="Confirm your display name" autocomplete="off">
                 </div>
-                <button id="google-signin-btn" class="btn btn-disabled" disabled>
-                    <div class="btn-icon">🔒</div>
-                    Sign in with Google (Coming Soon)
-                </button>
-                <button id="proceed-button" class="btn btn-primary" disabled>ENTER THE MATRIX</button>
-            </div>
-            <div class="matrix-rain">
-                <div class="rain-line"></div>
-                <div class="rain-line"></div>
-                <div class="rain-line"></div>
-                <div class="rain-line"></div>
-                <div class="rain-line"></div>
+                <div class="input-group">
+                    <div class="input-icon">🎂</div>
+                    <select id="year-of-birth-select" class="neon-input">
+                        <option value="">Select Year of Birth</option>
+                        <!-- Options will be populated by script -->
+                    </select>
+                </div>
+                <button id="complete-registration-btn" class="btn btn-primary" disabled>COMPLETE REGISTRATION</button>
             </div>
         </div>
 
@@ -87,53 +105,21 @@
                 <h1 class="screen-title">Welcome, <span id="user-name" class="accent"></span></h1>
                 <p class="screen-subtitle">Choose your challenge and begin typing</p>
             </div>
-            
             <div id="mode-cards" class="mode-grid">
-                <div class="mode-card" data-mode="practice">
-                    <div class="mode-icon green">▶️</div>
-                    <h3 class="mode-title">Practice Mode</h3>
-                    <p class="mode-description">Hone your skills with endless text</p>
-                    <div class="mode-glow green"></div>
-                </div>
-                <div class="mode-card" data-mode="test">
-                    <div class="mode-icon cyan">🏅</div>
-                    <h3 class="mode-title">Typing Test</h3>
-                    <p class="mode-description">Get certified for your performance</p>
-                    <div class="mode-glow cyan"></div>
-                </div>
-                <div class="mode-card" data-mode="contest">
-                    <div class="mode-icon yellow">🏆</div>
-                    <h3 class="mode-title">Daily Contest</h3>
-                    <p class="mode-description">1-minute challenge • Leaderboard glory</p>
-                    <div class="mode-glow yellow"></div>
-                </div>
+                <div class="mode-card" data-mode="practice"><div class="mode-icon green">▶️</div><h3 class="mode-title">Practice Mode</h3><p class="mode-description">Hone your skills with endless text</p></div>
+                <div class="mode-card" data-mode="test"><div class="mode-icon cyan">🏅</div><h3 class="mode-title">Typing Test</h3><p class="mode-description">Get certified for your performance</p></div>
+                <div class="mode-card" data-mode="contest"><div class="mode-icon yellow">🏆</div><h3 class="mode-title">Daily Contest</h3><p class="mode-description">1-minute challenge • Leaderboard glory</p></div>
             </div>
-
             <div id="time-selector" class="time-selector hidden">
                 <h3 class="time-title">Select Duration</h3>
-                <p class="time-subtitle">Choose how long you want to type</p>
                 <div class="time-buttons">
-                    <button class="time-btn" data-time="1">
-                        <div class="time-icon">⏱️</div>
-                        <span>1 min</span>
-                    </button>
-                    <button class="time-btn" data-time="2">
-                        <div class="time-icon">⏱️</div>
-                        <span>2 min</span>
-                    </button>
-                    <button class="time-btn" data-time="5">
-                        <div class="time-icon">⏱️</div>
-                        <span>5 min</span>
-                    </button>
+                    <button class="time-btn" data-time="1"><span>1 min</span></button>
+                    <button class="time-btn" data-time="2"><span>2 min</span></button>
+                    <button class="time-btn" data-time="5"><span>5 min</span></button>
                 </div>
                 <button id="back-to-modes" class="btn btn-secondary">← Back to Modes</button>
             </div>
-
-            <div class="logout-section">
-                <button id="logout-button" class="btn btn-logout">
-                    <span>🚪</span> Disconnect
-                </button>
-            </div>
+            <div class="logout-section"><button id="logout-button" class="btn btn-logout"><span>🚪</span> Disconnect</button></div>
         </div>
 
         <!-- Typing Screen -->
@@ -197,7 +183,7 @@
                 </div>
             </div>
 
-            <!-- Certificate Section -->
+            <!-- Certificate Section (for Typing Test mode) -->
             <div id="certificate-section" class="certificate-section hidden">
                 <h3 class="section-title">Your <span class="accent">Certificate</span></h3>
                 <div class="certificate-card">
@@ -216,7 +202,7 @@
                 </button>
             </div>
 
-            <!-- Leaderboard Section -->
+            <!-- Leaderboard Section (for Contest mode) -->
             <div id="leaderboard-section" class="leaderboard-section hidden">
                 <h3 class="section-title">Daily <span class="accent">Leaderboard</span></h3>
                 <div class="leaderboard-table">
@@ -237,7 +223,6 @@
             </button>
         </div>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
