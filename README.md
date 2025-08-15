@@ -6,7 +6,7 @@ A web-based Typing Speed Test application with Practice, Typing Test, and Contes
 ## 🌟 Features
 
 -   **Three Modes:** Practice (1/2/5 min), Typing Test (1/2/5 min + certificate), Daily Live Contest (1 min fixed)
--   ** Google Auth 2.0:** Google authentication for hassle free sign-in sign-up experience.
+-   **Google Auth 2.0:** Google authentication for hassle free sign-in sign-up experience.
 -   **Gemini API Integration:** Dynamic paragraph generation for varied typing experiences.
 -   **Real-time Feedback:** Color-coded highlights (correct/incorrect/current) for immediate typing feedback.
 -   **Accurate Metrics:** WPM and accuracy calculation for performance tracking.
